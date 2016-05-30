@@ -1,13 +1,19 @@
 #################################################################################
-#										#
+#																				#
 # GraphCSV converts CSV input files into a HTML file containing all CSS and 	#
-# JavaScript inline. 								#
-#										#
+# JavaScript inline. 															#
+#																				#
+# @author Shane Brennan															#
+# @date 20160530																#
 #################################################################################
+
+import csv
 
 class GraphCSV:
 
 	def __init__(self, chartName, csvFilename):
+
+		self.checkCSVData(csvFilename)
 
 		widthPixels = 700
 		heightPixels = 400
@@ -67,3 +73,35 @@ class GraphCSV:
 	def getConciseName(self, chartName):
 		conciseChartName = chartName.lower().replace(' ', '_')
 		return conciseChartName
+		
+	def checkCSVFilename(self, csvFilename):
+		if not os.path.exists(csvFilename):
+			print 'Error - Cannot file filename {0}'.format(csvFilename)
+			return False
+		elif not os.path.isfile(csvFilename):
+			print 'Error - Cannot file filename {0}'.format(csvFilename)
+			return False
+		else:
+			csvFile = open(csvFilename, 'rb')
+			reader = csv.reader(csvFile)
+			sniffer = csv.Sniffer()
+    		if not sniffer.has_header(reader):
+				print 'Error - CSV {0} has no header set'.format(csvFilename)
+				return False  
+			else:
+				index = 0
+				headerElements = 0
+				for row in reader:
+					if index == 0: 
+						headerElements = len(row)	
+					else:
+						if len(row) != headerElements:
+							print 'Error - row {0} has different number of row elements'.format(len(row))
+							return False
+					index += 1
+				
+				if index == 1:
+					print 'Error - CSV has only header row and no data'.format(len(row))
+					return False
+		return True
+			
