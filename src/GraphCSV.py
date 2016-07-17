@@ -31,10 +31,9 @@ class GraphCSV:
 		
 		# Set the flags to generate the chart options
 		self.ignoreHeaderFlag = ignoreHeaderFlag
-		self.lineChartFlag    = lineChartFlag
 		
 		# Instantiate the chart object
-		self.chart            = Chart()
+		self.chart            = Chart(lineChartFlag)
 		
 		# Parse the CSV input and update the chart
 		self.processCSV(inputFilename)
@@ -54,8 +53,8 @@ class GraphCSV:
 		try:
 			index = 0
 			for row in inputCSV:
-				if len(row) != 2:
-					raise InputException('Input not in two-column CSV format')
+				if len(row) != 3:
+					raise InputException('Input not in three-column CSV format')
 				if self.ignoreHeaderFlag:
 					if index > 0:
 						category = row[0]
@@ -73,10 +72,12 @@ class GraphCSV:
  			exit
 
 class Chart:
-	def __init__(self):
+	def __init__(self, lineChartFlag):
 		# Assign a random name to the chart
 		self.chartName       =  'chart_' + ''.join(random.choice('1234567890') for i in range(6))
-
+		self.xFormat         = None
+		self.lineChartFlag    = lineChartFlag
+		
 		# Setup the chart elements and categories
 		self.categoryList    = []
 		self.categoryNames   = Set()
@@ -84,7 +85,9 @@ class Chart:
 	def addElement(self, categoryName, xPos, yPos):
 		""" Adds an element to the category and elements list.
 		"""
-
+		if self.xFormat is None:
+			self.xFormat = self.getFormat(xPos)
+		
 		if categoryName in self.categoryNames:
 			index    = self.getIndex(categoryName)
 			category = self.categoryList[index]
@@ -103,6 +106,22 @@ class Chart:
 				return index
 		return -1
 
+	def getFormat(self, value):
+		date1  = re.compile('[0-9]{4}[-/]{1}[0-9]{2}[-/]{1}[0-9]{2}')
+		date2  = re.compile('[0-9]{2}[-/]{1}[0-9]{2}[-/]{1}[0-9]{4}')
+		date3  = re.compile('20[0-9]{1}[0-9]{1}[0-1]{1}[0-9]{1}[0-3]{1}[0-9]{1}')
+		float1 = re.compile('[0-9]+.[0-9]+')
+		
+		if date1.match(value):
+			return '%Y-%m-%d'
+		elif date2.match(value):
+			return '%d-%m-%Y'
+		elif date3.match(value):
+			return '%Y%m%d'
+		elif float1.match(value):
+			return '%.2f'
+		else:
+			return '%.0f'
 
 	def generateHTML(self):
 		""" Generate HTML from the provided CSV.
@@ -114,9 +133,8 @@ class Chart:
 		html += "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n"
 		html += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1.0\"/>\n"
 		html += "  <title>Grapher v1.0 Dashboard</title>\n"
-		html += "  <link rel=\"shortcut icon\" href=\"http://dubla025.airtricity.com/img/favicon.ico\">\n"
 		html += "  <link href=\"https://fonts.googleapis.com/icon?family=Material+Icons\" rel=\"stylesheet\">\n"
-		html += "  <link href=\"http://materialize.com/css/materialize.css\" type=\"text/css\" rel=\"stylesheet\" media=\"screen,projection\"/ >\n"
+		html += "  <link href=\"http://materializecss.com/css/ghpages-materialize.css\" type=\"text/css\" rel=\"stylesheet\" media=\"screen,projection\"/ >\n"
 		html += "  <link href=\"http://nvd3.org/assets/css/nv.d3.css\" rel=\"stylesheet\" type=\"text/css\">\n"
 		html += "  <script src=\"http://nvd3.org/assets/lib/d3.v3.js\" charset=\"utf-8\"></script>\n"
 		html += "  <script src=\"http://nvd3.org/assets/js/nv.d3.js\"></script>\n"
@@ -129,12 +147,35 @@ class Chart:
 
 		html +=  "<!-- Script of Priority Tasks -->\n"
 		html += "<script>\n"
-		html += "\tvar chart = nv.models.multiBarChart()\n"
-		html += "\t\t.reduceXTicks(false)\n"
-		html += "\t\t.rotateLabels(30)\n"
-		html += "\t\t.showControls(false)\n"
-		html += "\t\t.stacked(true)\n"
-		html += "\t\t.groupSpacing(0.1);\n\n"
+
+		if self.lineChartFlag:
+			html += "<script>\n"
+			html += "\tvar chart = nv.models.stackedAreaChart()\n"
+			html += "\t\t.margin({right: 100})\n"
+			html += "\t\t.x(function(d) { return parseDate(d.x); } )\n"
+			html += "\t\t.useInteractiveGuideline(true)\n"
+			html += "\t\t.rightAlignYAxis(true)\n"
+			html += "\t\t.transitionDuration(500)\n"
+			html += "\t\t.showControls(true)\n"
+			html += "\t\t.clipEdge(true);\n"
+
+			if '%Y' in self.xFormat:                               
+				html += "\tvar parseDate = d3.time.format(\"{0}\").parse;\n".format(self.xFormat)
+				html += "\tchart.xAxis.tickFormat(function(d) {\n"
+				html += "\treturn d3.time.format('{0}')(new Date(d))\n".format(self.xFormat)
+			else:
+				html += "\tchart.xAxis.tickFormat(d3.format(',.2f'));\n"
+				
+			html += "\t});\n"
+			html += "\tchart.yAxis.tickFormat(d3.format(',.2f'));\n"
+		else:
+			html += "\tvar chart = nv.models.multiBarChart()\n"
+			html += "\t\t.reduceXTicks(false)\n"
+			html += "\t\t.rotateLabels(30)\n"
+			html += "\t\t.showControls(false)\n"
+			html += "\t\t.stacked(true)\n"
+			html += "\t\t.groupSpacing(0.1);\n\n"
+
 		html += "d3.select('#{0} svg').datum([\n".format(self.chartName)
 
 		for categoryName in self.categoryNames:
@@ -218,11 +259,17 @@ class InputException(Exception):
 def main(argv):
 	parser = OptionParser(usage="Usage: Grapher <filename>")
 
-    parser.add_option("-i", "--ignore",
+	parser.add_option("-i", "--ignore",
 		action="store_true",
 		dest="ignoreHeaderFlag",
 		default=False,
 		help="Ignore the header in the CSV")
+
+	parser.add_option("-l", "--linechart",
+		action="store_true",
+		dest="lineChartFlag",
+		default=False,
+		help="Create a line chart.")
 
 	(options, filename) = parser.parse_args()
 
@@ -234,7 +281,7 @@ def main(argv):
 		print "Input file does not exist"
 		exit(1)
 
-	check = GraphCSV(options.ignoreHeaderFlag, filename[0])
+	check = GraphCSV(options.ignoreHeaderFlag, options.lineChartFlag, filename[0])
 		
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
